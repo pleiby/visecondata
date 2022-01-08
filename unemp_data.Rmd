@@ -1,0 +1,190 @@
+---
+title: "unemployment data"
+author: "Paul Leiby"
+date: "1/8/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Get Unemployment Data by State from FRED
+
+Builds on [How to Collect US Unemployment Data at State or County Level from FRED](https://blog.exploratory.io/how-to-collect-us-unemployment-data-at-state-or-county-level-from-fred-ad04e48686a4), Kan Nishida, 2020.
+
+```{r}
+library(tidyverse)
+library(tidyquant)
+```
+
+The 1st parameter inside the ‘tq_get’ function is the code for the data. In this case, that is the code for the Unemployment Rate data.
+
+You can find the code on the [unemployment rate page at FRED.](https://fred.stlouisfed.org/series/UNRATE)
+
+
+```{r}
+u_US = tq_get("UNRATE", get = "economic.data", from = "1999-01-01")
+u_US
+```
+
+Data for All US States
+
+There are also US State-level unemployment data.
+
+E.g. [the Unemployment Rate for California](https://fred.stlouisfed.org/series/CAUR)
+
+
+get this data by running an R command like the below.
+
+
+```{r}
+u_CA = tq_get("CAUR", get = "economic.data", from = "1999-01-01")
+u_CA
+```
+
+#### To get all the 50 states data
+
+The code for the state-level unemployment rate has the following rule.
+
+`<State_Code>UR`
+
+```{r}
+# function to download unemployment data from one state
+# returns dataframe with data and `state_code` column
+download_one_state <- function(state_code, fred_series = "UR") {
+  fred_code <- str_c(state_code, fred_series)
+  
+  tq_get(fred_code, get = "economic.data", from = "1999-01-01") %>%
+    mutate(state = state_code)  
+}
+
+```
+
+
+When you start an R session there are a few sample data and lists already loaded in the memory. `state.abb` is a character vector os state codes.
+
+
+```{r}
+state_code_vec = state.abb # character vec of 2-char state codes
+```
+
+```{r}
+u_states <- map_dfr(state_code_vec, download_one_state) # uses `purrr` from `tidyverse`, returns df
+u_states <- u_states  %>% rename(unempl = price) # strangely, default series value name is `price`
+```
+
+Check the distribution of observations by state.
+
+```{r}
+u_states %>%
+  # summarize(count = n_distinct(state)) # returns 50
+  group_by(state) %>%
+  summarize(count = n()) %>%
+  summary() # distribution of obs by state
+
+```
+
+To find source and name of other FRED data series, see
+[Fred Categories](https://fred.stlouisfed.org/categories)
+
+Reveals that code for NonFarm Employment is `<State_Code>NA`
+
+"All Employees: Total Nonfarm.
+Units: Thousands of Persons, Seasonally Adjusted
+Frequency: Monthly"
+
+Download the NonFarm Employment info for all states from FRED
+
+For the US as a whole
+Unemployment Level, Thousands of Persons, Seasonally Adjusted, Monthly is `UNEMPLOY`
+https://fred.stlouisfed.org/series/UNEMPLOY
+
+Employment Level, Thousands of Persons, Monthly is `CE16OV`
+All Employees, Total Nonfarm, Thousands of Persons, Monthly is `PAYEMS`
+
+```{r}
+download_one_state_NonFarmEmpl = function(statecode) {
+  download_one_state(statecode, "NA")
+}
+
+n_states = map_dfr(state_code_vec, download_one_state_NonFarmEmpl) # uses `purrr` from `tidyverse`, returns df
+n_states <- n_states %>% rename(nfempl = price) # strangely, default series value name is `price`
+
+```
+
+```{r}
+n_US <- n_states %>%
+  group_by(date) %>%
+  summarize(nfempl = sum(nfempl)) %>%
+  mutate(state = "US")
+  
+```
+
+
+
+Are you kidding me? Larry Kudlow has zero economic expertise or credibility, a bachelors degree in history, and no economic credentials.  A former TV host is the macroeconomics expert that Fox News is citing? Sure he was appointed by Trump to the NEC, but, well no more need be said. More to the point, what is Kudlow's evidence
+
+https://www.foxnews.com/media/larry-kudlow-biden-red-state-jobless-benefits-crackdown-jobs-report-ingraham-angle
+
+"LARRY KUDLOW: Those red states ended the excessively generous unemployment benefits, three or four months earlier, before the federal government did – and many more people returned to work because of that. So I think you’re making a good argument that a lot of the plusses in the jobs report today come from those very red states."
+
+So we need a measure of state "Redness." For this we rely on the "Partisan Voting Index" for 2021,
+as compiled by [World Population Review, Most Republican States 2021](https://worldpopulationreview.com/state-rankings/most-republican-states)
+
+
+```{r}
+partisan_index = read_csv("./data/partisan_voting_index_by_state.csv")
+state_codes = read_csv("./data/state_postal_and_FIPS_codes.csv")
+```
+
+```{r}
+# Aside:
+# check to confirm agreement with `state_codes` on PostalAbbreviations and StateNames
+partisan_index %>%
+  right_join(state_codes, by = c("StateName"="State")) %>%
+  filter(state != PostalAbbr)
+
+```
+
+_Exploratory Data Analysis With R_, Ch. 10 Plotting in Color in R, 10.7
+https://bookdown.org/rdpeng/exdata/plotting-and-color-in-r.html
+
+```{r}
+library(RColorBrewer)
+# select an RColorBrewer palatte (Red to Blue)
+cols <- brewer.pal(11, "RdBu") # 11 is maximum number of colors allowed
+# Those n colors make up the initial palette.
+# Then I can pass them to colorRampPalette() to create my interpolating function.
+pal <- colorRampPalette(cols)
+
+c(min(volcano), max(volcano))
+image(volcano, col = pal(20))
+
+```
+
+```{r}
+set.seed(2)
+x <- rnorm(2000)
+y <- rnorm(2000)
+plot(x, y, pch = 19)
+plot(x, y, pch = 19, col = rgb(0, 0, 0, 0.15))
+
+test = tibble(x,y)
+ggplot(test, aes(x = x, y = y)) + geom_point(alpha = 0.15)
+```
+
+```{r}
+partisan_index %>%
+  rename(partisanIndex = partisanVotingIndexRepublican) %>%
+  filter(!is.na(partisanIndex)) %>%
+  mutate(partisanIndex = -partisanIndex) %>% # reverse order for colors
+  arrange(partisanIndex) %>%
+  ggplot(aes(x = state, y = partisanIndex, color = partisanIndex)) +
+  geom_point() + 
+  # https://r-charts.com/correlation/scatter-plot-ggplot2/
+  # https://ggplot2.tidyverse.org/reference/scale_gradient.html
+  # scale_color_gradient(low = "#67c9ff", high = "#f2bbfc")
+  scale_color_gradient2()
+```
+

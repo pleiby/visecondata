@@ -16,6 +16,7 @@ Builds on [How to Collect US Unemployment Data at State or County Level from FRE
 ```{r}
 library(tidyverse)
 library(tidyquant)
+library(plotly)
 ```
 
 The 1st parameter inside the ‘tq_get’ function is the code for the data. In this case, that is the code for the Unemployment Rate data.
@@ -117,7 +118,9 @@ n_states <- n_states %>% rename(nfempl = price) # strangely, default series valu
 n_US <- n_states %>%
   group_by(date) %>%
   summarize(nfempl = sum(nfempl)) %>%
-  mutate(state = "US")
+  mutate(
+    state = "US",
+    symbol = "USNA")
   
 ```
 
@@ -147,6 +150,8 @@ partisan_index %>%
 
 ```
 
+### Graphical Visualization
+
 _Exploratory Data Analysis With R_, Ch. 10 Plotting in Color in R, 10.7
 https://bookdown.org/rdpeng/exdata/plotting-and-color-in-r.html
 
@@ -175,8 +180,10 @@ ggplot(test, aes(x = x, y = y)) + geom_point(alpha = 0.15)
 ```
 
 ```{r}
+partisan_index <- partisan_index %>%
+  rename(partisanIndex = partisanVotingIndexRepublican) 
+
 partisan_index %>%
-  rename(partisanIndex = partisanVotingIndexRepublican) %>%
   filter(!is.na(partisanIndex)) %>%
   mutate(partisanIndex = -partisanIndex) %>% # reverse order for colors
   arrange(partisanIndex) %>%
@@ -188,3 +195,64 @@ partisan_index %>%
   scale_color_gradient2()
 ```
 
+```{r}
+
+n_states <- n_states %>%
+  rbind(n_US)
+
+n_states <- n_states %>%
+  right_join(partisan_index, by = c("state")) %>% # loses the US b.c. no partisan index
+  select(-StateName)
+
+```
+
+```{r}
+
+u_US <- u_US %>%
+  rename(unempl = price) %>%
+  mutate(state = "US")
+  
+
+u_states <- u_states %>%
+  rbind(u_US)
+
+u_states <- u_states %>%
+  right_join(partisan_index, by = c("state")) %>% # loses the US b.c. no partisan index
+  select(-StateName)
+
+```
+
+
+```{r}
+
+p <- u_states %>%
+  filter(!is.na(partisanIndex)) %>%
+  filter(date >= "2020-01-01") %>%
+  mutate(partisanIndex = -partisanIndex) %>% # reverse order for colors
+  group_by(state) %>%
+  ggplot(aes(x = date, y = unempl, cshape = state)) +
+  # geom_point(alpha = 0.5) + 
+  geom_line(alpha = 0.5, aes(color = partisanIndex)) + 
+  # https://r-charts.com/correlation/scatter-plot-ggplot2/
+  # https://ggplot2.tidyverse.org/reference/scale_gradient.html
+  # scale_color_gradient(low = "#67c9ff", high = "#f2bbfc")
+  scale_color_gradient2() +
+  labs(title = "Unemployment Rate by State")
+
+ggplotly(p)
+```
+
+### Aside 1 - Factet Plots and Smoothing Lines, 2 Ways
+Demo plot with `qplot`
+
+```{r}
+qplot(displ, hwy, data = mpg, facets = . ~ drv, geom = c("point", "smooth"))
+```
+
+Same plot with `ggplot`
+
+```{r}
+ggplot(data = mpg, aes(displ, hwy)) + geom_point() +
+  geom_smooth(method = 'loess', formula = 'y ~ x') +
+  facet_grid(. ~ drv)
+```
